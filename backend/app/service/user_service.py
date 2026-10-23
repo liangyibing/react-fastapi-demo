@@ -1,5 +1,7 @@
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth.password import hash_password
 from app.model.user import User
 from app.schema.user import UserCreate
 
@@ -15,13 +17,21 @@ class UserService:
         self.dal=UserDAL()
 
 
-#   `获取所有用户`
+#   `获取用户分页`
     def list(
         self,
-        db:Session
+        db:Session,
+        page:int,
+        page_size:int
     ):
 
-        return self.dal.get_all(db)
+        items,total=self.dal.get_page(
+            db,
+            page,
+            page_size
+        )
+
+        return items,total
 
 
 
@@ -32,16 +42,21 @@ class UserService:
     ):
 
 
+        normalized_email = data.email.strip().lower()
+        if db.query(User.id).filter(User.email == normalized_email).first():
+            raise ValueError("邮箱已存在")
+
         user=User(
             name=data.name,
-            email=data.email
+            email=normalized_email,
+            password_hash=hash_password(data.password)
         )
 
-
-        return self.dal.create(
-            db,
-            user
-        )
+        try:
+            return self.dal.create(db, user)
+        except IntegrityError:
+            db.rollback()
+            raise ValueError("邮箱已存在")
 
 
 
